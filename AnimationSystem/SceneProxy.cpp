@@ -9,6 +9,19 @@ void SceneProxy::Draw()
 
 }
 
+void SceneProxy::DrawPoint()
+{
+	glBindVertexArray(vertexarrayid);
+	glDrawElements(GL_POINTS, indexsize, GL_UNSIGNED_INT, (void*)0);
+	
+}
+
+void SceneProxy::DrawLine()
+{
+	glBindVertexArray(vertexarrayid);
+	glDrawElements(GL_LINES, indexsize, GL_UNSIGNED_INT, (void*)0);
+}
+
 // This function will only call draw element without bind any shader.
 // If shader is already binded, it will better call this.
 void SceneProxy::DrawMeshOnly()
@@ -52,6 +65,32 @@ void SceneProxy::InitMeshData(std::vector<MeshData> mesh, std::vector<int> index
 	glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(mesh[0]), (void*)(3 * sizeof(glm::vec3) + 2 * sizeof(glm::vec2)));
 
 	// Memorize index size for Draw() fucntion
+	indexsize = static_cast<unsigned int>(index.size()) * sizeof(index[0]);
+}
+
+void SceneProxy::InitSkeletonData(Skeleton skeleton, std::vector<int> index)
+{
+	std::vector<glm::vec3> skeleton_vector;
+
+	for (int i = 0; i < skeleton.joints.size(); i++)
+	{
+		if (skeleton.joints[i].parent_index == -1)
+		{
+			continue;
+		}
+		skeleton_vector.push_back(skeleton.joints[i].coord);
+		skeleton_vector.push_back(skeleton.joints[skeleton.joints[i].parent_index].coord);
+
+		index.push_back(2 * i + 0);
+		index.push_back(2 * i + 1);
+	}
+
+	glBufferData(GL_ARRAY_BUFFER, skeleton.joints.size() * sizeof(glm::vec3), skeleton_vector.data(), GL_STATIC_DRAW);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, index.size() * sizeof(index[0]), index.data(), GL_STATIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)(0));
+
 	indexsize = static_cast<unsigned int>(index.size()) * sizeof(index[0]);
 }
 
