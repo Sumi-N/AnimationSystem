@@ -29,13 +29,22 @@ int main()
 	std::vector<int> index;
 	std::vector<MeshData> mesh;
 	Skeleton this_skeleton;
+	AnimationClip this_clip;
+	this_clip.pSkeleton = &this_skeleton;
 
 	Importer fbx;
 
-	fbx.Init("../models/Anim_PlayerCharacter_run.fbx");
-	fbx.PrintData();
+	fbx.Init("../models/SK_PlayerCharacter.fbx");
+	//fbx.PrintData();
 	//fbx.ImportMeshData(mesh, index);
+	//fbx.ImportSkeletonMeshData(this_skeleton);
+	//fbx.ImportAnimationData(this_clip);
+	fbx.CleanUp();
+
+	fbx.Init("../models/Anim_PlayerCharacter_run.fbx");
+	//fbx.PrintData();
 	fbx.ImportSkeletonMeshData(this_skeleton);
+	fbx.ImportAnimationData(this_clip);
 	fbx.CleanUp();
 
 	if (glfwInit() == GL_FALSE)
@@ -82,6 +91,10 @@ int main()
 	//////////////////////////////////////////////////////////////
 
 	// CreateShader
+	Shader* skeletonanimationshader = new Shader();
+	skeletonanimationshader->SetShader("../Shaders/skeleton_animation.vert.glsl", "../Shaders/skeleton_animation.frag.glsl");
+	skeletonanimationshader->LoadShader();
+
 	Shader* skeletonshader = new Shader();
 	skeletonshader->SetShader("../Shaders/empty.vert.glsl", "../Shaders/empty.frag.glsl");
 	skeletonshader->LoadShader();
@@ -89,6 +102,10 @@ int main()
 	Shader* shader = new Shader();
 	shader->SetShader("../Shaders/debug_polygon.vert.glsl", "../Shaders/debug_polygon.geo.glsl","../Shaders/debug_polygon.frag.glsl");
 	shader->LoadShader();
+
+	Shader* animationshader = new Shader();
+	animationshader->SetShader("../Shaders/debug_animation.vert.glsl", "../Shaders/debug_animation.geo.glsl", "../Shaders/debug_animation.frag.glsl");
+	animationshader->LoadShader();
 
 	//////////////////////////////////////////////////////////////
 	
@@ -104,12 +121,23 @@ int main()
 	std::vector<int> skeleton_index;
 	skeleton_proxy.InitSkeletonData(this_skeleton, skeleton_index);
 
+	// Create skeleton animation
+	SceneProxy skeleton_animation_proxy;
+	skeleton_animation_proxy.InitBuffer();
+	std::vector<int> skeleton_index2;
+	skeleton_animation_proxy.InitSkeletonAnimationData(this_skeleton, this_clip, skeleton_index2);
+
 
 	//////////////////////////////////////////////////////////////
 
 	// Constant Buffer
 	ConstantBuffer buffer;
 	buffer.Init(ConstantData::Index::Model, ConstantData::Size::Model);
+
+	ConstantBuffer buffer2;
+	buffer2.Init(ConstantData::Index::Skeleton, ConstantData::Size::Skeleton);
+
+	ConstantData::Skeleton animation_inversed_matrix;
 
 	// create transformations
 	glm::mat4 view = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
@@ -122,6 +150,8 @@ int main()
 
 	float angle = 0;
 	glm::vec3 obj_position = glm::vec3(0.0, -50.0f, -300.0f);
+
+	int animation_sample_count = 0;
 	
 
 	//////////////////////////////////////////////////////////////
@@ -140,8 +170,17 @@ int main()
 			angle = 0;
 		}
 
-		// Submit constant data
-		// Calculate camera matrix
+		if (animation_sample_count < 13)
+		{
+			animation_sample_count++;
+		}
+		else
+		{
+			animation_sample_count = 0;
+		}
+
+		//Submit constant data
+		//Calculate camera matrix
 		glm::vec3 current_camera_pos = GetCameraRotation(angle, camera_position, obj_position);
 		view = glm::lookAt(current_camera_pos, glm::vec3(obj_position.x, 0, obj_position.z), glm::vec3(0, 1.0, 0));
 
@@ -156,12 +195,32 @@ int main()
 		buffer.Update(&constant_model);
 
 		// draw mesh 
-		shader->BindShader();
-		proxy.Draw();
+		//shader->BindShader();
+		//proxy.Draw();
 
-		// draw skeleton
-		skeletonshader->BindShader();
-		skeleton_proxy.DrawLine();
+		//// draw skeleton
+		//skeletonshader->BindShader();
+		//skeleton_proxy.DrawLine();
+
+
+
+		// Calculate skeleton's matrix
+		if (!this_clip.samples.empty())
+		{
+			for (int i = 0; i < this_clip.samples[animation_sample_count].jointposes.size(); i++)
+			{
+				animation_inversed_matrix.global_inversed_matrix[i] = this_clip.samples[animation_sample_count].jointposes[i].global_inverse_matrix;
+			}
+			buffer2.Update(&animation_inversed_matrix);
+		}
+
+		// draw animation
+		//animationshader->BindShader();
+		//proxy.Draw();
+
+		// draw skeleton animation 
+		skeletonanimationshader->BindShader();
+		skeleton_animation_proxy.DrawLine();
 
 		// glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
 		// -------------------------------------------------------------------------------

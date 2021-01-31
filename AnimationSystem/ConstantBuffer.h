@@ -12,6 +12,11 @@ namespace ConstantData
 		glm::mat4 model_inverse_transpose_matrix;
 	};
 
+	struct Skeleton
+	{
+		glm::mat4 global_inversed_matrix[256];
+	};
+
 	enum class Index : uint8_t
 	{
 		Camera = 0,
@@ -20,11 +25,13 @@ namespace ConstantData
 		Light = 3,
 		SkyBox = 4,
 		CubeMap = 5,
+		Skeleton = 6,
 	};
 
 	enum class Size : uint16_t
 	{
 		Model = sizeof(ConstantData::Model),
+		Skeleton = sizeof(ConstantData::Skeleton),
 		//Camera = sizeof(ConstantData::Camera),
 		//Material = sizeof(ConstantData::Material),
 		//Light = sizeof(ConstantData::Light),

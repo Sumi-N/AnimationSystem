@@ -80,9 +80,6 @@ bool Importer::ImportMeshData(std::vector<MeshData>& mesh, std::vector<int>& ind
 	{
 		FbxMesh* pMesh = Importer::lScene->GetSrcObject<FbxMesh>(i);
 
-		printf("The pmesh name is %s\n", pMesh->GetName());
-		printf("The polygon count is %d\n", pMesh->GetPolygonCount());
-
 		FbxNode* pNode = pMesh->GetNode();
 
 		glm::mat4 model_matrix = glm::mat4(1.0);
@@ -112,6 +109,30 @@ bool Importer::ImportMeshData(std::vector<MeshData>& mesh, std::vector<int>& ind
 		// Get UV layer names
 		FbxStringList uvsetName;
 		pMesh->GetUVSetNames(uvsetName);
+
+		// Get skin information
+		unsigned int numOfDeformers = pMesh->GetDeformerCount();
+
+		for (unsigned int deformerIndex = 0; deformerIndex < numOfDeformers; ++deformerIndex)
+		{
+			// There are many types of deformers in FBX format,
+			// We only use skin, so if this deformer is a skin
+			FbxSkin* pSkin = reinterpret_cast<FbxSkin*>(pMesh->GetDeformer(deformerIndex, FbxDeformer::eSkin));
+			if (!pSkin)
+			{
+				continue;
+			}
+
+			unsigned int numOfClusters = pSkin->GetClusterCount();
+
+			for (unsigned int clusterIndex = 0; clusterIndex < numOfClusters; ++clusterIndex)
+			{
+				FbxCluster* currCluster = pSkin->GetCluster(clusterIndex);
+				std::string currJointName = currCluster->GetLink()->GetName();
+				//unsigned int currJointIndex = FindJointIndexUsingName(currJointName.c_str, skeleton);
+				//printf("hello");
+			}
+		}
 
 		// Current index count
 		int n = 0 + (int)index.size();
@@ -198,29 +219,124 @@ bool Importer::ImportSkeletonMeshData(Skeleton& skeleton)
 	return true;
 }
 
-bool Importer::ImportAnimationData()
+bool Importer::ImportAnimationData(AnimationClip& clip)
 {
 	// Get animation information
 	// Now only supports one take
 	FbxAnimStack* currAnimStack = lScene->GetSrcObject<FbxAnimStack>(0);
-	FbxString animStackName = currAnimStack->GetName();
-	auto mAnimationName = animStackName.Buffer();
-	FbxTakeInfo* takeInfo = lScene->GetTakeInfo(animStackName);
-	FbxTime start = takeInfo->mLocalTimeSpan.GetStart();
-	FbxTime end = takeInfo->mLocalTimeSpan.GetStop();
-	auto mAnimationLength = end.GetFrameCount(FbxTime::eFrames24) - start.GetFrameCount(FbxTime::eFrames24) + 1;
-
-	Keyframe** currAnim = &mSkeleton.mJoints[currJointIndex].mAnimation;
-
-	for (FbxLongLong i = start.GetFrameCount(FbxTime::eFrames24); i <= end.GetFrameCount(FbxTime::eFrames24); ++i)
+	if (currAnimStack)
 	{
-		FbxTime currTime;
-		currTime.SetFrame(i, FbxTime::eFrames24);
-		*currAnim = new Keyframe();
-		(*currAnim)->mFrameNum = i;
-		FbxAMatrix currentTransformOffset = inNode->EvaluateGlobalTransform(currTime) * geometryTransform;
-		(*currAnim)->mGlobalTransform = currentTransformOffset.Inverse() * currCluster->GetLink()->EvaluateGlobalTransform(currTime);
-		currAnim = &((*currAnim)->mNext);
+		FbxString animStackName = currAnimStack->GetName();
+		auto mAnimationName = animStackName.Buffer();
+		FbxTakeInfo* takeInfo = lScene->GetTakeInfo(animStackName);
+		FbxTime start = takeInfo->mLocalTimeSpan.GetStart();
+		FbxTime end = takeInfo->mLocalTimeSpan.GetStop();
+		FbxLongLong mAnimationLength = end.GetFrameCount(FbxTime::eFrames24) - start.GetFrameCount(FbxTime::eFrames24) + 1;
+
+		clip.frame_count = (int)mAnimationLength;
+
+
+		for (FbxLongLong i = start.GetFrameCount(FbxTime::eFrames24); i <= end.GetFrameCount(FbxTime::eFrames24); ++i)
+		{
+			AnimationSample sample;
+
+			FbxTime currTime;
+			currTime.SetFrame(i, FbxTime::eFrames24);
+			ImportAnimationSample(sample, currTime);
+			clip.samples.push_back(sample);
+		}
+	}	
+	return true;
+}
+
+bool Importer::ImportAnimationSample(AnimationSample& sample, FbxTime time)
+{
+	for (int childIndex = 0; childIndex < Importer::lRootNode->GetChildCount(); ++childIndex)
+	{
+		FbxNode* currNode = Importer::lRootNode->GetChild(childIndex);
+		ProcessAnimationSampleRecursively(currNode, sample, time);
+	}
+
+	return true;
+}
+
+bool Importer::ImportSkinData(std::vector<MeshData>& mesh, Skeleton skeleton)
+{
+	//Get mesh in the scene
+	int meshCount = Importer::lScene->GetSrcObjectCount<FbxMesh>();
+
+	for (int i = 0; i < meshCount; ++i)
+	{
+
+		FbxMesh* currMesh = Importer::lScene->GetSrcObject<FbxMesh>(i);
+
+		FbxNode* pNode = currMesh->GetNode();
+
+		unsigned int numOfDeformers = currMesh->GetDeformerCount();
+		// This geometry transform is something I cannot understand
+		// I think it is from MotionBuilder
+		// If you are using Maya for your models, 99% this is just an
+		// identity matrix
+		// But I am taking it into account anyways......
+		FbxAMatrix geometryTransform = GetGeometryTransformation(pNode);
+
+		// A deformer is a FBX thing, which contains some clusters
+		// A cluster contains a link, which is basically a joint
+		// Normally, there is only one deformer in a mesh
+		for (unsigned int deformerIndex = 0; deformerIndex < numOfDeformers; ++deformerIndex)
+		{
+			// There are many types of deformers in Maya,
+			// We are using only skins, so we see if this is a skin
+			FbxSkin* currSkin = reinterpret_cast<FbxSkin*>(currMesh->GetDeformer(deformerIndex, FbxDeformer::eSkin));
+			if (!currSkin)
+			{
+				continue;
+			}
+
+			unsigned int numOfClusters = currSkin->GetClusterCount();
+			for (unsigned int clusterIndex = 0; clusterIndex < numOfClusters; ++clusterIndex)
+			{
+				FbxCluster* currCluster = currSkin->GetCluster(clusterIndex);
+				std::string currJointName = currCluster->GetLink()->GetName();
+				//unsigned int currJointIndex = FindJointIndexUsingName(currJointName.c_str, skeleton);
+				//FbxAMatrix transformMatrix;
+				//FbxAMatrix transformLinkMatrix;
+				//FbxAMatrix globalBindposeInverseMatrix;
+
+				//currCluster->GetTransformMatrix(transformMatrix);	// The transformation of the mesh at binding time
+				//currCluster->GetTransformLinkMatrix(transformLinkMatrix);	// The transformation of the cluster(joint) at binding time from joint space to world space
+				//globalBindposeInverseMatrix = transformLinkMatrix.Inverse() * transformMatrix * geometryTransform;
+
+				//// Update the information in mSkeleton 
+				//mSkeleton.mJoints[currJointIndex].mGlobalBindposeInverse = globalBindposeInverseMatrix;
+				//mSkeleton.mJoints[currJointIndex].mNode = currCluster->GetLink();
+
+				// Associate each joint with the control points it affects
+				//unsigned int numOfIndices = currCluster->GetControlPointIndicesCount();
+				//for (unsigned int i = 0; i < numOfIndices; ++i)
+				//{
+				//	//BlendingIndexWeightPair currBlendingIndexWeightPair;
+				//	currBlendingIndexWeightPair.mBlendingIndex = currJointIndex;
+				//	currBlendingIndexWeightPair.mBlendingWeight = currCluster->GetControlPointWeights()[i];
+				//	mControlPoints[currCluster->GetControlPointIndices()[i]]->mBlendingInfo.push_back(currBlendingIndexWeightPair);
+				//}
+			}
+		}
+
+		// Some of the control points only have less than 4 joints
+		// affecting them.
+		// For a normal renderer, there are usually 4 joints
+		// I am adding more dummy joints if there isn't enough
+		//BlendingIndexWeightPair currBlendingIndexWeightPair;
+		//currBlendingIndexWeightPair.mBlendingIndex = 0;
+		//currBlendingIndexWeightPair.mBlendingWeight = 0;
+		//for (auto itr = mControlPoints.begin(); itr != mControlPoints.end(); ++itr)
+		//{
+		//	for (unsigned int i = itr->second->mBlendingInfo.size(); i <= 4; ++i)
+		//	{
+		//		itr->second->mBlendingInfo.push_back(currBlendingIndexWeightPair);
+		//	}
+		//}
 	}
 
 	return true;
@@ -328,99 +444,6 @@ bool Importer::ImportMaterial(FbxSurfaceMaterial* material, MaterialData& mat)
 	return true;
 }
 
-void Importer::ProcessJointsAndAnimations(FbxMesh* currMesh, Skeleton skeleton)
-{
-	//FbxMesh* currMesh = inNode->GetMesh();
-	unsigned int numOfDeformers = currMesh->GetDeformerCount();
-	// This geometry transform is something I cannot understand
-	// I think it is from MotionBuilder
-	// If you are using Maya for your models, 99% this is just an
-	// identity matrix
-	// But I am taking it into account anyways......
-	FbxAMatrix geometryTransform = GetGeometryTransformation(currMesh->GetNode());
-
-	// A deformer is a FBX thing, which contains some clusters
-	// A cluster contains a link, which is basically a joint
-	// Normally, there is only one deformer in a mesh
-	for (unsigned int deformerIndex = 0; deformerIndex < numOfDeformers; ++deformerIndex)
-	{
-		// There are many types of deformers in Maya,
-		// We are using only skins, so we see if this is a skin
-		FbxSkin* currSkin = reinterpret_cast<FbxSkin*>(currMesh->GetDeformer(deformerIndex, FbxDeformer::eSkin));
-		if (!currSkin)
-		{
-			continue;
-		}
-
-		unsigned int numOfClusters = currSkin->GetClusterCount();
-		for (unsigned int clusterIndex = 0; clusterIndex < numOfClusters; ++clusterIndex)
-		{
-			FbxCluster* currCluster = currSkin->GetCluster(clusterIndex);
-			std::string currJointName = currCluster->GetLink()->GetName();
-			int currJointIndex = FindJointIndexUsingName(currJointName.c_str(), skeleton);
-			FbxAMatrix transformMatrix;
-			FbxAMatrix transformLinkMatrix;
-			FbxAMatrix globalBindposeInverseMatrix;
-
-			currCluster->GetTransformMatrix(transformMatrix);	// The transformation of the mesh at binding time
-			currCluster->GetTransformLinkMatrix(transformLinkMatrix);	// The transformation of the cluster(joint) at binding time from joint space to world space
-			globalBindposeInverseMatrix = transformLinkMatrix.Inverse() * transformMatrix * geometryTransform;
-
-			// Update the information in mSkeleton 
-			skeleton.joints[currJointIndex].inversed = convertFBXMatrix(globalBindposeInverseMatrix);
-			//skeleton.joints[currJointIndex].mNode = currCluster->GetLink();
-
-			// Associate each joint with the control points it affects
-			unsigned int numOfIndices = currCluster->GetControlPointIndicesCount();
-			for (unsigned int i = 0; i < numOfIndices; ++i)
-			{
-				BlendingWeight currBlendingIndexWeightPair;
-				currBlendingIndexWeightPair.index = currJointIndex;
-				currBlendingIndexWeightPair.weight = currCluster->GetControlPointWeights()[i];
-				//mControlPoints[currCluster->GetControlPointIndices()[i]]->mBlendingInfo.push_back(currBlendingIndexWeightPair);
-			}
-
-			// Get animation information
-			// Now only supports one take
-			FbxAnimStack* currAnimStack = lScene->GetSrcObject<FbxAnimStack>(0);
-			FbxString animStackName = currAnimStack->GetName();
-			std::cout << animStackName << "\n";
-			auto mAnimationName = animStackName.Buffer();
-			FbxTakeInfo* takeInfo = lScene->GetTakeInfo(animStackName);
-			FbxTime start = takeInfo->mLocalTimeSpan.GetStart();
-			FbxTime end = takeInfo->mLocalTimeSpan.GetStop();
-			auto mAnimationLength = end.GetFrameCount(FbxTime::eFrames24) - start.GetFrameCount(FbxTime::eFrames24) + 1;
-			//Keyframe** currAnim = &skeleton.joints[currJointIndex].mAnimation;
-
-			for (FbxLongLong i = start.GetFrameCount(FbxTime::eFrames24); i <= end.GetFrameCount(FbxTime::eFrames24); ++i)
-			{
-				FbxTime currTime;
-				currTime.SetFrame(i, FbxTime::eFrames24);
-				//*currAnim = new Keyframe();
-				//(*currAnim)->mFrameNum = i;
-				FbxAMatrix currentTransformOffset = currMesh->GetNode()->EvaluateGlobalTransform(currTime) * geometryTransform;
-				//(*currAnim)->mGlobalTransform = currentTransformOffset.Inverse() * currCluster->GetLink()->EvaluateGlobalTransform(currTime);
-				//currAnim = &((*currAnim)->mNext);
-			}
-		}
-	}
-
-	// Some of the control points only have less than 4 joints
-	// affecting them.
-	// For a normal renderer, there are usually 4 joints
-	// I am adding more dummy joints if there isn't enough
-	//BlendingIndexWeightPair currBlendingIndexWeightPair;
-	//currBlendingIndexWeightPair.mBlendingIndex = 0;
-	//currBlendingIndexWeightPair.mBlendingWeight = 0;
-	//for (auto itr = mControlPoints.begin(); itr != mControlPoints.end(); ++itr)
-	//{
-	//	for (unsigned int i = itr->second->mBlendingInfo.size(); i <= 4; ++i)
-	//	{
-	//		itr->second->mBlendingInfo.push_back(currBlendingIndexWeightPair);
-	//	}
-	//}
-}
-
 FbxAMatrix Importer::GetGeometryTransformation(FbxNode* inNode)
 {
 	if (!inNode)
@@ -433,23 +456,6 @@ FbxAMatrix Importer::GetGeometryTransformation(FbxNode* inNode)
 	const FbxVector4 lS = inNode->GetGeometricScaling(FbxNode::eSourcePivot);
 
 	return FbxAMatrix(lT, lR, lS);
-}
-
-int Importer::FindJointIndexUsingName(const char* name, Skeleton skeleton)
-{
-	for (int i = 0; i < skeleton.joints.size(); i++)
-	{
-		if (strcmp(skeleton.joints[i].name, name) == 0)
-		{
-			return i;
-		}
-	}
-	return -1;
-}
-
-glm::mat4 Importer::convertFBXMatrix(FbxAMatrix)
-{
-	return glm::mat4();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -564,7 +570,7 @@ void Importer::ProcessSkeletonHierarchyRecursively(FbxNode* inNode, int inDepth,
 		currJoint.parent_index = inParentIndex;
 		currJoint.name = inNode->GetName();
 
-		FbxAMatrix global_mat = inNode->EvaluateGlobalTransform(0);
+		FbxAMatrix global_mat = inNode->EvaluateGlobalTransform();
 		currJoint.coord = glm::vec3(global_mat.GetT().mData[0], global_mat.GetT().mData[1], global_mat.GetT().mData[2]);
 		
 		skeleton.joints.push_back(currJoint);
@@ -573,4 +579,41 @@ void Importer::ProcessSkeletonHierarchyRecursively(FbxNode* inNode, int inDepth,
 	{
 		ProcessSkeletonHierarchyRecursively(inNode->GetChild(i), inDepth + 1, skeleton.joints.size(), myIndex, skeleton);
 	}
+}
+
+void Importer::ProcessAnimationSampleRecursively(FbxNode* inNode, AnimationSample & sample, FbxTime time)
+{
+	if (inNode->GetNodeAttribute() && inNode->GetNodeAttribute()->GetAttributeType() && inNode->GetNodeAttribute()->GetAttributeType() == FbxNodeAttribute::eSkeleton)
+	{
+		JointPose currPose;
+
+		FbxAMatrix global_mat = inNode->EvaluateGlobalTransform(time);
+		currPose.trans = glm::vec4(global_mat.GetT().mData[0], global_mat.GetT().mData[1], global_mat.GetT().mData[2], 1.0);
+		currPose.rot   = glm::quat(glm::vec3(global_mat.GetT().mData[0], global_mat.GetT().mData[1], global_mat.GetT().mData[2]));
+		currPose.scale = global_mat.GetS().mData[0];
+		currPose.global_inverse_matrix = glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(currPose.trans)), glm::vec3(currPose.scale, currPose.scale, currPose.scale));
+
+		sample.jointposes.push_back(currPose);
+	}
+	for (int i = 0; i < inNode->GetChildCount(); i++)
+	{
+		ProcessAnimationSampleRecursively(inNode->GetChild(i), sample, time);
+	}
+}
+
+int Importer::FindJointIndexUsingName(const char* name, Skeleton skeleton)
+{
+	for (int i = 0; i < skeleton.joints.size(); i++)
+	{
+		if (strcmp(skeleton.joints[i].name, name) == 0)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+void Importer::ConvertJointPoseBySkeleton(AnimationSample& sample)
+{
+
 }

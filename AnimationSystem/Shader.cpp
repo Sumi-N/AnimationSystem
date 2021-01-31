@@ -103,6 +103,8 @@ void Shader::LoadShader(Shader& io_shader, const char* i_vert, const char* i_fra
 	glBindAttribLocation(io_shader.programid, 2, "model_texcoord");
 	glBindAttribLocation(io_shader.programid, 3, "model_tangent_vec");
 	glBindAttribLocation(io_shader.programid, 4, "model_bitangent_vec");
+	glBindAttribLocation(io_shader.programid, 5, "index");
+	glBindAttribLocation(io_shader.programid, 6, "weight");
 	glBindFragDataLocation(io_shader.programid, 0, "color");
 	glLinkProgram(io_shader.programid);
 

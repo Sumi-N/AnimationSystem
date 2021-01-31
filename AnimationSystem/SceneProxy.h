@@ -13,6 +13,10 @@ __declspec(align(16)) struct MeshData
 	glm::vec2 padding; //For alignment purpose
 	glm::vec3 tangent;
 	glm::vec3 bitangent;
+	glm::ivec4    index;
+	glm::vec4     weight;
+
+	MeshData() : index(glm::ivec4(-1, -1, -1, -1)){ }
 };
 
 struct MaterialData
@@ -53,12 +57,6 @@ struct Joint
 	int         parent_index;
 };
 
-struct BlendingWeight
-{
-	int index;
-	float weight;
-};
-
 struct Skeleton
 {
 	std::vector<Joint>   joints;
@@ -69,13 +67,29 @@ struct JointPose
 	glm::quat   rot;
 	glm::vec4   trans;
 	float       scale;
+	glm::mat4   global_inverse_matrix;
 };
 
-struct SkeletonPose
+
+struct AnimationSample
 {
-	Skeleton*  skeletons;
-	JointPose* local_pose;
-	glm::mat4      global_pose;
+	std::vector<JointPose> jointposes;	
+};
+
+struct AnimationClip
+{
+	Skeleton *                   pSkeleton;
+	float                        frame_per_second;
+	int                          frame_count;
+	std::vector<AnimationSample> samples;
+	bool                         is_looping;
+};
+
+// This is for showing the skeleton animation
+struct AnimationSkeleton
+{
+	glm::vec3 pos;
+	int       index;
 };
 
 ///////////////////////////////////////////////////////////////////
@@ -111,6 +125,7 @@ public:
 	void InitBuffer();
 	void InitMeshData(std::vector<MeshData> mesh, std::vector<int> index);
 	void InitSkeletonData(Skeleton skeleton, std::vector<int> index);
+	void InitSkeletonAnimationData(Skeleton skeleton, AnimationClip clip, std::vector<int> index);
 	//void CheckDrawType(Shader i_shader);
 	void SetDrawType(DrawType i_drawtype)
 	{

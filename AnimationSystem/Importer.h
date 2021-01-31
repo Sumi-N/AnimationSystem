@@ -13,20 +13,16 @@ public:
 public:
 
 	bool ImportMaterial(FbxSurfaceMaterial*, MaterialData&);
-
-	void ProcessJointsAndAnimations(FbxMesh*, Skeleton);
 	FbxAMatrix GetGeometryTransformation(FbxNode*);
-
-	int FindJointIndexUsingName(const char*, Skeleton);
-	glm::mat4 convertFBXMatrix(FbxAMatrix);
 
 public:
 
 	bool ImportMeshData(std::vector<MeshData>&, std::vector<int>&);
 	bool ImportSkeletonMeshData(Skeleton&);
 	bool ImportMaterialData(MaterialData&);
-	bool ImportAnimationData();
-	bool ImportJointData();
+	bool ImportAnimationData(AnimationClip&);
+	bool ImportAnimationSample(AnimationSample&, FbxTime);
+	bool ImportSkinData(std::vector<MeshData>&, Skeleton);
 
 public:
 	static FbxManager* lSdkManager;
@@ -36,13 +32,20 @@ public:
 private:
 
 	// For debug purpose
-	void PrintNode(FbxNode* pNode);
-	void ImportNode(FbxNode* pNode);
-	void PrintAttribute(FbxNodeAttribute* pAttribute);
-	FbxString GetAttributeTypeName(FbxNodeAttribute::EType type);
+	void PrintNode(FbxNode*);
+	void ImportNode(FbxNode*);
+	void PrintAttribute(FbxNodeAttribute*);
+	FbxString GetAttributeTypeName(FbxNodeAttribute::EType);
 	void PrintTabs();
 
-	// For Skeleton
+	// Recursive function
 	void ProcessSkeletonHierarchyRecursively(FbxNode*, int, int, int, Skeleton&);
+	void ProcessAnimationSampleRecursively(FbxNode*, AnimationSample&, FbxTime);
+
+	// Find joint 
+	int FindJointIndexUsingName(const char*, Skeleton);
+
+	// Convert between joinstpose and joint
+	void ConvertJointPoseBySkeleton(AnimationSample&);
 };
 

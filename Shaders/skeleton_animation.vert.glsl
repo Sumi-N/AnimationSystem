@@ -1,10 +1,6 @@
 #version 420 core
-
-layout (location = 0) in vec3 model_position;
-layout (location = 1) in vec3 model_normal;
- layout (location = 3) in vec3 model_tangent;
-layout (location = 5) in ivec4 index;
-layout (location = 6) in vec4  weight;
+layout (location = 0) in vec3 model_position1;
+layout (location = 1) in int model_index;
 
 // Consta data
 const int   MAX_BONE_NUM = 256;
@@ -23,5 +19,6 @@ layout (std140, binding = 6) uniform const_animation_skeleton
 
 void main()
 {
-	gl_Position = model_view_perspective_matrix * vec4(model_position, 1);
+     gl_Position = model_view_perspective_matrix * global_inversed_matrix[model_index] * vec4(model_position1, 1);
+	 //gl_Position = model_view_perspective_matrix * model_index *vec4(model_position1, 1);
 }
