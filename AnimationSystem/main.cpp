@@ -30,7 +30,8 @@ void ConvertJointPoseBySkeleton(AnimationClip& clip, Skeleton skeleton)
 			// For now, it's hard coded. 
 			if (j > 20)
 			{
-				break;
+				clip.samples[i].jointposes[j].global_inverse_matrix = clip.samples[i].jointposes[j].global_inverse_matrix * skeleton.joints[j].inversed;
+				continue;
 			}
 			if (finished)
 			{
@@ -40,15 +41,16 @@ void ConvertJointPoseBySkeleton(AnimationClip& clip, Skeleton skeleton)
 			if (skeleton.joints[j].parent_index != clip.samples[i].jointposes[j].parent_index)
 			{
 				JointPose empty;
-				empty.global_inverse_matrix = skeleton.joints[j].inversed;
+				//empty.global_inverse_matrix = skeleton.joints[j].inversed;
+				empty.global_inverse_matrix = glm::mat4(1.0);
 				empty.parent_index = skeleton.joints[j].parent_index;
 				clip.samples[i].jointposes.insert(clip.samples[i].jointposes.begin() + j, empty);
 				diff++;
 				finished = false;
 			}
 			else
-			{
-				//clip.samples[i].jointposes[j].global_inverse_matrix = clip.samples[i].jointposes[j].global_inverse_matrix * skeleton.joints[j].inversed;
+			{				
+				clip.samples[i].jointposes[j].global_inverse_matrix = clip.samples[i].jointposes[j].global_inverse_matrix * skeleton.joints[j].inversed;
 				finished = true;
 			}
 		}
@@ -239,11 +241,11 @@ int main()
 
 		// draw mesh 
 		shader->BindShader();
-		proxy.Draw();
+		//proxy.Draw();
 
 		//// draw skeleton
 		skeletonshader->BindShader();
-		skeleton_proxy.DrawLine();
+		//skeleton_proxy.DrawLine();
 
 
 
@@ -263,7 +265,7 @@ int main()
 
 		// draw skeleton animation 
 		skeletonanimationshader->BindShader();
-		//skeleton_animation_proxy.DrawLine();
+		skeleton_animation_proxy.DrawLine();
 
 		// glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
 		// -------------------------------------------------------------------------------

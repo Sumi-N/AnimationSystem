@@ -152,6 +152,11 @@ bool Importer::ImportMeshData(std::vector<MeshData>& mesh, std::vector<int>& ind
 				};
 				skeleton.joints[currJointIndex].inversed = glm::make_mat4(elemetns);
 
+				//glm::vec4 trans = glm::vec4(gbpim.GetT().mData[0], gbpim.GetT().mData[1], gbpim.GetT().mData[2], 1.0);
+				//glm::quat rot = glm::quat(glm::vec3(gbpim.GetT().mData[0], gbpim.GetT().mData[1], gbpim.GetT().mData[2]));
+				//float     scale = gbpim.GetS().mData[0];
+				//skeleton.joints[currJointIndex].inversed = glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(trans)), glm::vec3(scale, scale, scale));
+
 
 				//Associate each joint with the control points it affects
 				unsigned int numOfIndices = currCluster->GetControlPointIndicesCount();

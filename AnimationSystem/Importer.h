@@ -8,29 +8,22 @@
 class Importer
 {
 public:
+	static FbxManager* lSdkManager;
+	static FbxScene* lScene;
+	static FbxNode* lRootNode;
+	static std::multimap<int, BlendingWeight> WeightMap;
+
+public:
 	bool Init(const char*);
 	void PrintData();
 	bool CleanUp();
 
 public:
-
-	bool ImportMaterial(FbxSurfaceMaterial*, MaterialData&);
-	FbxAMatrix GetGeometryTransformation(FbxNode*);
-
-public:
-
-	bool ImportMeshData(std::vector<MeshData>&, std::vector<int>&, Skeleton);
+	bool ImportMeshData(std::vector<MeshData>&, std::vector<int>&, Skeleton&);
 	bool ImportSkeletonMeshData(Skeleton&);
 	bool ImportMaterialData(MaterialData&);
 	bool ImportAnimationData(AnimationClip&);
 	bool ImportAnimationSample(AnimationSample&, FbxTime);
-	bool ImportSkinData(Skeleton);
-
-public:
-	static FbxManager* lSdkManager;
-	static FbxScene* lScene;
-	static FbxNode* lRootNode;
-	static std::multimap<int, BlendingWeight> WeightMap;
 
 private:
 
@@ -47,5 +40,6 @@ private:
 
 	// Find joint 
 	int FindJointIndexUsingName(std::string, Skeleton);
+	FbxAMatrix GetGeometryTransformation(FbxNode*);
 };
 
