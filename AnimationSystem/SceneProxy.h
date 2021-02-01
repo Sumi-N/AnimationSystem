@@ -16,7 +16,7 @@ __declspec(align(16)) struct MeshData
 	glm::ivec4    index;
 	glm::vec4     weight;
 
-	MeshData() : index(glm::ivec4(-1, -1, -1, -1)){ }
+	MeshData() : index(glm::ivec4(-1, -1, -1, -1)), weight(glm::vec4(0, 0, 0, 0)){ }
 };
 
 struct MaterialData
@@ -26,6 +26,12 @@ struct MaterialData
 	glm::vec3 emissive;
 	glm::vec3 specular;
 	float shininess;
+};
+
+struct BlendingWeight
+{
+	int index;
+	float weight;
 };
 
 enum class TextureType : int8_t
@@ -53,7 +59,7 @@ struct Joint
 {
 	glm::mat4   inversed; // inversed bind pose translation matrix
 	glm::vec3   coord;
-	const char* name;
+	std::string name;
 	int         parent_index;
 };
 
@@ -68,6 +74,7 @@ struct JointPose
 	glm::vec4   trans;
 	float       scale;
 	glm::mat4   global_inverse_matrix;
+	int         parent_index;
 };
 
 

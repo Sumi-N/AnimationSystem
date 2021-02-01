@@ -111,11 +111,12 @@ void Shader::LoadShader(Shader& io_shader, const char* i_vert, const char* i_fra
 	if (PrintProgramInfoLog(io_shader.programid))
 	{
 		DEBUG_PRINT("Succeed compiling the shader %s, and %s \n", i_vert, i_frag);
-		printf("succeed loading shader");
+		printf("succeed loading shader\n");
 	}
 	else
 	{
 		DEBUG_PRINT("Failed compiling one of the shaders in %s, and %s \n", i_vert, i_frag);
+		printf("failed loading shader\n");
 	}
 }
 

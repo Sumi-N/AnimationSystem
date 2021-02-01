@@ -65,8 +65,8 @@ void SceneProxy::InitMeshData(std::vector<MeshData> mesh, std::vector<int> index
 	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(mesh[0]), (void*)(2 * sizeof(glm::vec3)));
 	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(mesh[0]), (void*)(2 * sizeof(glm::vec3) + 2 * sizeof(glm::vec2)));
 	glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(mesh[0]), (void*)(3 * sizeof(glm::vec3) + 2 * sizeof(glm::vec2)));
-	glVertexAttribPointer(5, 4, GL_INT,   GL_FALSE, sizeof(mesh[0]), (void*)(4 * sizeof(glm::vec3) + 2 * sizeof(glm::vec2)));
-	glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(mesh[0]), (void*)(4 * sizeof(glm::vec3) + 2 * sizeof(glm::vec2) + sizeof(glm::ivec4)));
+	glVertexAttribIPointer(5, 4, GL_INT,            sizeof(mesh[0]), (void*)(4 * sizeof(glm::vec3) + 2 * sizeof(glm::vec2)));
+	glVertexAttribPointer(6, 4, GL_FLOAT, GL_TRUE, sizeof(mesh[0]), (void*)(4 * sizeof(glm::vec3) + 2 * sizeof(glm::vec2) + sizeof(glm::ivec4)));
 
 	// Memorize index size for Draw() fucntion
 	indexsize = static_cast<unsigned int>(index.size()) * sizeof(index[0]);

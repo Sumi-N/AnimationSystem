@@ -16,6 +16,45 @@
 
 GLFWwindow * glfwwindow;
 
+
+void ConvertJointPoseBySkeleton(AnimationClip& clip, Skeleton skeleton)
+{
+	int diff;
+	bool finished = false;
+
+	for (int i = 0; i < clip.samples.size(); i++)
+	{
+		diff = 0;
+		for (int j = 0; j < skeleton.joints.size(); j++)
+		{
+			// For now, it's hard coded. 
+			if (j > 20)
+			{
+				break;
+			}
+			if (finished)
+			{
+				clip.samples[i].jointposes[j].parent_index += diff;
+			}
+
+			if (skeleton.joints[j].parent_index != clip.samples[i].jointposes[j].parent_index)
+			{
+				JointPose empty;
+				empty.global_inverse_matrix = skeleton.joints[j].inversed;
+				empty.parent_index = skeleton.joints[j].parent_index;
+				clip.samples[i].jointposes.insert(clip.samples[i].jointposes.begin() + j, empty);
+				diff++;
+				finished = false;
+			}
+			else
+			{
+				//clip.samples[i].jointposes[j].global_inverse_matrix = clip.samples[i].jointposes[j].global_inverse_matrix * skeleton.joints[j].inversed;
+				finished = true;
+			}
+		}
+	}
+}
+
 glm::vec3 GetCameraRotation(float angle, glm::vec3 camera_pos, glm::vec3 model_pos)
 {
 	float r = glm::length(camera_pos - model_pos);
@@ -36,16 +75,20 @@ int main()
 
 	fbx.Init("../models/SK_PlayerCharacter.fbx");
 	//fbx.PrintData();
-	//fbx.ImportMeshData(mesh, index);
-	//fbx.ImportSkeletonMeshData(this_skeleton);
+	fbx.ImportSkeletonMeshData(this_skeleton);
+	//fbx.ImportSkinData(this_skeleton);
+	fbx.ImportMeshData(mesh, index, this_skeleton);
 	//fbx.ImportAnimationData(this_clip);
 	fbx.CleanUp();
 
 	fbx.Init("../models/Anim_PlayerCharacter_run.fbx");
+	//fbx.Init("../models/Anim_PlayerCharacter_falling.fbx");
 	//fbx.PrintData();
-	fbx.ImportSkeletonMeshData(this_skeleton);
+	//fbx.ImportSkeletonMeshData(this_skeleton);
 	fbx.ImportAnimationData(this_clip);
 	fbx.CleanUp();
+
+	ConvertJointPoseBySkeleton(this_clip, this_skeleton);
 
 	if (glfwInit() == GL_FALSE)
 	{
@@ -188,19 +231,19 @@ int main()
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, obj_position);
 		//model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
-		//model = glm::scale(model, glm::vec3(0.05f, 0.05f, 0.05f));
+		//model = glm::scale(model, glm::vec3(1.0f, 0.5f, 1.0f));
 
 		// Calculate MVP matrix and submit to constant buffer
 		constant_model.model_view_perspective_matrix = projection * view * model;
 		buffer.Update(&constant_model);
 
 		// draw mesh 
-		//shader->BindShader();
-		//proxy.Draw();
+		shader->BindShader();
+		proxy.Draw();
 
 		//// draw skeleton
-		//skeletonshader->BindShader();
-		//skeleton_proxy.DrawLine();
+		skeletonshader->BindShader();
+		skeleton_proxy.DrawLine();
 
 
 
@@ -215,12 +258,12 @@ int main()
 		}
 
 		// draw animation
-		//animationshader->BindShader();
-		//proxy.Draw();
+		animationshader->BindShader();
+		proxy.Draw();
 
 		// draw skeleton animation 
 		skeletonanimationshader->BindShader();
-		skeleton_animation_proxy.DrawLine();
+		//skeleton_animation_proxy.DrawLine();
 
 		// glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
 		// -------------------------------------------------------------------------------

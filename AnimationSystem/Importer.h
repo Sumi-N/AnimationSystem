@@ -3,6 +3,8 @@
 #include <glm/matrix.hpp>
 #include "SceneProxy.h"
 
+#include <map>
+
 class Importer
 {
 public:
@@ -17,17 +19,18 @@ public:
 
 public:
 
-	bool ImportMeshData(std::vector<MeshData>&, std::vector<int>&);
+	bool ImportMeshData(std::vector<MeshData>&, std::vector<int>&, Skeleton);
 	bool ImportSkeletonMeshData(Skeleton&);
 	bool ImportMaterialData(MaterialData&);
 	bool ImportAnimationData(AnimationClip&);
 	bool ImportAnimationSample(AnimationSample&, FbxTime);
-	bool ImportSkinData(std::vector<MeshData>&, Skeleton);
+	bool ImportSkinData(Skeleton);
 
 public:
 	static FbxManager* lSdkManager;
 	static FbxScene* lScene;
 	static FbxNode* lRootNode;
+	static std::multimap<int, BlendingWeight> WeightMap;
 
 private:
 
@@ -40,12 +43,9 @@ private:
 
 	// Recursive function
 	void ProcessSkeletonHierarchyRecursively(FbxNode*, int, int, int, Skeleton&);
-	void ProcessAnimationSampleRecursively(FbxNode*, AnimationSample&, FbxTime);
+	void ProcessAnimationSampleRecursively(FbxNode*, int, int, int, AnimationSample&, FbxTime);
 
 	// Find joint 
-	int FindJointIndexUsingName(const char*, Skeleton);
-
-	// Convert between joinstpose and joint
-	void ConvertJointPoseBySkeleton(AnimationSample&);
+	int FindJointIndexUsingName(std::string, Skeleton);
 };
 

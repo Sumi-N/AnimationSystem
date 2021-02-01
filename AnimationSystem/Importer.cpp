@@ -8,6 +8,7 @@
 FbxManager* Importer::lSdkManager = nullptr;
 FbxScene* Importer::lScene  = nullptr;
 FbxNode* Importer::lRootNode = nullptr;
+std::multimap<int, BlendingWeight> Importer::WeightMap;
 
 bool Importer::Init(const char * i_filepath)
 {
@@ -71,7 +72,7 @@ bool Importer::CleanUp()
 	return true;
 }
 
-bool Importer::ImportMeshData(std::vector<MeshData>& mesh, std::vector<int>& index)
+bool Importer::ImportMeshData(std::vector<MeshData>& mesh, std::vector<int>& index, Skeleton skeleton)
 {
 	//Get mesh in the scene
 	int meshCount = Importer::lScene->GetSrcObjectCount<FbxMesh>();
@@ -110,27 +111,53 @@ bool Importer::ImportMeshData(std::vector<MeshData>& mesh, std::vector<int>& ind
 		FbxStringList uvsetName;
 		pMesh->GetUVSetNames(uvsetName);
 
-		// Get skin information
+		// Store skin data
 		unsigned int numOfDeformers = pMesh->GetDeformerCount();
 
+		// A deformer is a FBX thing, which contains some clusters
+		// A cluster contains a link, which is basically a joint
+		// Normally, there is only one deformer in a mesh
 		for (unsigned int deformerIndex = 0; deformerIndex < numOfDeformers; ++deformerIndex)
 		{
-			// There are many types of deformers in FBX format,
-			// We only use skin, so if this deformer is a skin
-			FbxSkin* pSkin = reinterpret_cast<FbxSkin*>(pMesh->GetDeformer(deformerIndex, FbxDeformer::eSkin));
-			if (!pSkin)
+			// There are many types of deformers in Maya,
+			// We are using only skins, so we see if this is a skin
+			FbxSkin* currSkin = reinterpret_cast<FbxSkin*>(pMesh->GetDeformer(deformerIndex, FbxDeformer::eSkin));
+			if (!currSkin)
 			{
 				continue;
 			}
 
-			unsigned int numOfClusters = pSkin->GetClusterCount();
-
+			unsigned int numOfClusters = currSkin->GetClusterCount();
 			for (unsigned int clusterIndex = 0; clusterIndex < numOfClusters; ++clusterIndex)
 			{
-				FbxCluster* currCluster = pSkin->GetCluster(clusterIndex);
+				FbxCluster* currCluster = currSkin->GetCluster(clusterIndex);
 				std::string currJointName = currCluster->GetLink()->GetName();
-				//unsigned int currJointIndex = FindJointIndexUsingName(currJointName.c_str, skeleton);
-				//printf("hello");
+				int currJointIndex = FindJointIndexUsingName(currJointName, skeleton);
+
+				//FbxAMatrix transformMatrix;
+				//FbxAMatrix transformLinkMatrix;
+				//FbxAMatrix globalBindposeInverseMatrix;
+
+				//currCluster->GetTransformMatrix(transformMatrix);	// The transformation of the mesh at binding time
+				//currCluster->GetTransformLinkMatrix(transformLinkMatrix);	// The transformation of the cluster(joint) at binding time from joint space to world space
+				//globalBindposeInverseMatrix = transformLinkMatrix.Inverse() * transformMatrix * geometryTransform;
+
+				//// Update the information in mSkeleton 
+				//mSkeleton.mJoints[currJointIndex].mGlobalBindposeInverse = globalBindposeInverseMatrix;
+				//mSkeleton.mJoints[currJointIndex].mNode = currCluster->GetLink();
+
+				//Associate each joint with the control points it affects
+				unsigned int numOfIndices = currCluster->GetControlPointIndicesCount();
+				for (unsigned int j = 0; j < numOfIndices; ++j)
+				{
+					BlendingWeight currBlending;
+					currBlending.index = currJointIndex;
+					currBlending.weight = currCluster->GetControlPointWeights()[j];
+
+					int controlpointindex = currCluster->GetControlPointIndices()[j];
+
+					WeightMap.insert(std::make_pair(controlpointindex, currBlending));
+				}
 			}
 		}
 
@@ -138,7 +165,8 @@ bool Importer::ImportMeshData(std::vector<MeshData>& mesh, std::vector<int>& ind
 		int n = 0 + (int)index.size();
 
 		// The reason we can assume each polygon has 3 vertices is because we called triangulate function before
-		for (int j = 0; j < pMesh->GetPolygonCount(); j++)
+		int polygonIndexCount = pMesh->GetPolygonCount();
+		for (int j = 0; j < polygonIndexCount; j++)
 		{
 			index.push_back(n + 3 * j + 0);
 			index.push_back(n + 3 * j + 1);
@@ -198,11 +226,89 @@ bool Importer::ImportMeshData(std::vector<MeshData>& mesh, std::vector<int>& ind
 				p2.uv.y = (float)uv3.mData[1];
 			}
 
+			// Get skin info from WidhtMap
+			typedef std::multimap<int, BlendingWeight>::iterator iter;
+			int this_index = index_array[3 * j + 0];
+			for (std::pair<iter, iter> range(WeightMap.equal_range(this_index)); range.first != range.second; ++range.first)
+			{
+				if (p1.index.x == -1)
+				{
+					p1.index.x = range.first->second.index;
+					p1.weight.x = range.first->second.weight;
+				}
+				else if (p1.index.y == -1)
+				{
+					p1.index.y = range.first->second.index;
+					p1.weight.y = range.first->second.weight;
+				}
+				else if (p1.index.z == -1)
+				{
+					p1.index.z = range.first->second.index;
+					p1.weight.z = range.first->second.weight;
+				}
+				else
+				{
+					p1.index.w = range.first->second.index;
+					p1.weight.w = range.first->second.weight;
+				}
+			}
+
+			this_index = index_array[3 * j + 1];
+			for (std::pair<iter, iter> range(WeightMap.equal_range(this_index)); range.first != range.second; ++range.first)
+			{
+				if (p2.index.x == -1)
+				{
+					p2.index.x = range.first->second.index;
+					p2.weight.x = range.first->second.weight;
+				}
+				else if (p2.index.y == -1)
+				{
+					p2.index.y = range.first->second.index;
+					p2.weight.y = range.first->second.weight;
+				}
+				else if (p2.index.z == -1)
+				{
+					p2.index.z = range.first->second.index;
+					p2.weight.z = range.first->second.weight;
+				}
+				else
+				{
+					p2.index.w = range.first->second.index;
+					p2.weight.w = range.first->second.weight;
+				}
+			}
+
+			this_index = index_array[3 * j + 2];
+			for (std::pair<iter, iter> range(WeightMap.equal_range(this_index)); range.first != range.second; ++range.first)
+			{
+				if (p3.index.x == -1)
+				{
+					p3.index.x = range.first->second.index;
+					p3.weight.x = range.first->second.weight;
+				}
+				else if (p3.index.y == -1)
+				{
+					p3.index.y = range.first->second.index;
+					p3.weight.y = range.first->second.weight;
+				}
+				else if (p3.index.z == -1)
+				{
+					p3.index.z = range.first->second.index;
+					p3.weight.z = range.first->second.weight;
+				}
+				else
+				{
+					p3.index.w = range.first->second.index;
+					p3.weight.w = range.first->second.weight;
+				}
+			}
+
 			mesh.push_back(p1);
 			mesh.push_back(p2);
 			mesh.push_back(p3);
 		}
-		
+
+		WeightMap.clear();
 	}
 
 	return 0;
@@ -254,13 +360,13 @@ bool Importer::ImportAnimationSample(AnimationSample& sample, FbxTime time)
 	for (int childIndex = 0; childIndex < Importer::lRootNode->GetChildCount(); ++childIndex)
 	{
 		FbxNode* currNode = Importer::lRootNode->GetChild(childIndex);
-		ProcessAnimationSampleRecursively(currNode, sample, time);
+		ProcessAnimationSampleRecursively(currNode, 0, 0, -1, sample, time);
 	}
 
 	return true;
 }
 
-bool Importer::ImportSkinData(std::vector<MeshData>& mesh, Skeleton skeleton)
+bool Importer::ImportSkinData(Skeleton skeleton)
 {
 	//Get mesh in the scene
 	int meshCount = Importer::lScene->GetSrcObjectCount<FbxMesh>();
@@ -273,12 +379,6 @@ bool Importer::ImportSkinData(std::vector<MeshData>& mesh, Skeleton skeleton)
 		FbxNode* pNode = currMesh->GetNode();
 
 		unsigned int numOfDeformers = currMesh->GetDeformerCount();
-		// This geometry transform is something I cannot understand
-		// I think it is from MotionBuilder
-		// If you are using Maya for your models, 99% this is just an
-		// identity matrix
-		// But I am taking it into account anyways......
-		FbxAMatrix geometryTransform = GetGeometryTransformation(pNode);
 
 		// A deformer is a FBX thing, which contains some clusters
 		// A cluster contains a link, which is basically a joint
@@ -298,7 +398,8 @@ bool Importer::ImportSkinData(std::vector<MeshData>& mesh, Skeleton skeleton)
 			{
 				FbxCluster* currCluster = currSkin->GetCluster(clusterIndex);
 				std::string currJointName = currCluster->GetLink()->GetName();
-				//unsigned int currJointIndex = FindJointIndexUsingName(currJointName.c_str, skeleton);
+				int currJointIndex = FindJointIndexUsingName(currJointName, skeleton);
+
 				//FbxAMatrix transformMatrix;
 				//FbxAMatrix transformLinkMatrix;
 				//FbxAMatrix globalBindposeInverseMatrix;
@@ -311,32 +412,20 @@ bool Importer::ImportSkinData(std::vector<MeshData>& mesh, Skeleton skeleton)
 				//mSkeleton.mJoints[currJointIndex].mGlobalBindposeInverse = globalBindposeInverseMatrix;
 				//mSkeleton.mJoints[currJointIndex].mNode = currCluster->GetLink();
 
-				// Associate each joint with the control points it affects
-				//unsigned int numOfIndices = currCluster->GetControlPointIndicesCount();
-				//for (unsigned int i = 0; i < numOfIndices; ++i)
-				//{
-				//	//BlendingIndexWeightPair currBlendingIndexWeightPair;
-				//	currBlendingIndexWeightPair.mBlendingIndex = currJointIndex;
-				//	currBlendingIndexWeightPair.mBlendingWeight = currCluster->GetControlPointWeights()[i];
-				//	mControlPoints[currCluster->GetControlPointIndices()[i]]->mBlendingInfo.push_back(currBlendingIndexWeightPair);
-				//}
+				//Associate each joint with the control points it affects
+				unsigned int numOfIndices = currCluster->GetControlPointIndicesCount();
+				for (unsigned int j = 0; j < numOfIndices; ++j)
+				{
+					BlendingWeight currBlending;
+					currBlending.index = currJointIndex;
+					currBlending.weight = currCluster->GetControlPointWeights()[j];
+
+					int controlpointindex = currCluster->GetControlPointIndices()[j];
+
+					WeightMap.insert(std::make_pair(controlpointindex, currBlending));
+				}
 			}
 		}
-
-		// Some of the control points only have less than 4 joints
-		// affecting them.
-		// For a normal renderer, there are usually 4 joints
-		// I am adding more dummy joints if there isn't enough
-		//BlendingIndexWeightPair currBlendingIndexWeightPair;
-		//currBlendingIndexWeightPair.mBlendingIndex = 0;
-		//currBlendingIndexWeightPair.mBlendingWeight = 0;
-		//for (auto itr = mControlPoints.begin(); itr != mControlPoints.end(); ++itr)
-		//{
-		//	for (unsigned int i = itr->second->mBlendingInfo.size(); i <= 4; ++i)
-		//	{
-		//		itr->second->mBlendingInfo.push_back(currBlendingIndexWeightPair);
-		//	}
-		//}
 	}
 
 	return true;
@@ -572,6 +661,8 @@ void Importer::ProcessSkeletonHierarchyRecursively(FbxNode* inNode, int inDepth,
 
 		FbxAMatrix global_mat = inNode->EvaluateGlobalTransform();
 		currJoint.coord = glm::vec3(global_mat.GetT().mData[0], global_mat.GetT().mData[1], global_mat.GetT().mData[2]);
+		float scale = global_mat.GetS().mData[0];
+		currJoint.inversed = glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(currJoint.coord)), glm::vec3(scale, scale, scale));
 		
 		skeleton.joints.push_back(currJoint);
 	}
@@ -581,11 +672,12 @@ void Importer::ProcessSkeletonHierarchyRecursively(FbxNode* inNode, int inDepth,
 	}
 }
 
-void Importer::ProcessAnimationSampleRecursively(FbxNode* inNode, AnimationSample & sample, FbxTime time)
+void Importer::ProcessAnimationSampleRecursively(FbxNode* inNode, int inDepth, int myIndex, int inParentIndex, AnimationSample & sample, FbxTime time)
 {
 	if (inNode->GetNodeAttribute() && inNode->GetNodeAttribute()->GetAttributeType() && inNode->GetNodeAttribute()->GetAttributeType() == FbxNodeAttribute::eSkeleton)
 	{
 		JointPose currPose;
+		currPose.parent_index = inParentIndex;
 
 		FbxAMatrix global_mat = inNode->EvaluateGlobalTransform(time);
 		currPose.trans = glm::vec4(global_mat.GetT().mData[0], global_mat.GetT().mData[1], global_mat.GetT().mData[2], 1.0);
@@ -597,23 +689,18 @@ void Importer::ProcessAnimationSampleRecursively(FbxNode* inNode, AnimationSampl
 	}
 	for (int i = 0; i < inNode->GetChildCount(); i++)
 	{
-		ProcessAnimationSampleRecursively(inNode->GetChild(i), sample, time);
+		ProcessAnimationSampleRecursively(inNode->GetChild(i), inDepth + 1, sample.jointposes.size(), myIndex, sample, time);
 	}
 }
 
-int Importer::FindJointIndexUsingName(const char* name, Skeleton skeleton)
+int Importer::FindJointIndexUsingName(std::string name, Skeleton skeleton)
 {
 	for (int i = 0; i < skeleton.joints.size(); i++)
 	{
-		if (strcmp(skeleton.joints[i].name, name) == 0)
+		if (skeleton.joints[i].name.compare(name) == 0)
 		{
 			return i;
 		}
 	}
 	return -1;
-}
-
-void Importer::ConvertJointPoseBySkeleton(AnimationSample& sample)
-{
-
 }
