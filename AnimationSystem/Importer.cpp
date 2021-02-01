@@ -3,6 +3,7 @@
 #include <glm/gtx/euler_angles.hpp>
 #include <iostream>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 
 #define FBXSDK_SHARED
 
@@ -78,8 +79,9 @@ bool Importer::ImportMeshData(std::vector<MeshData>& mesh, std::vector<int>& ind
 	//Get mesh in the scene
 	int meshCount = Importer::lScene->GetSrcObjectCount<FbxMesh>();
 
-	for (int i = 0; i < meshCount; ++i)
+	//for (int i = 0; i < meshCount; ++i)
 	{
+		int i = 1;
 		FbxMesh* pMesh = Importer::lScene->GetSrcObject<FbxMesh>(i);
 
 		FbxNode* pNode = pMesh->GetNode();
@@ -135,23 +137,6 @@ bool Importer::ImportMeshData(std::vector<MeshData>& mesh, std::vector<int>& ind
 				FbxCluster* currCluster = currSkin->GetCluster(clusterIndex);
 				std::string currJointName = currCluster->GetLink()->GetName();
 				int currJointIndex = FindJointIndexUsingName(currJointName, skeleton);
-
-				FbxAMatrix transformMatrix;
-				FbxAMatrix transformLinkMatrix;
-				FbxAMatrix gbpim; // global bind pose inverse matrix
-
-				currCluster->GetTransformMatrix(transformMatrix);	// The transformation of the mesh at binding time
-				currCluster->GetTransformLinkMatrix(transformLinkMatrix);	// The transformation of the cluster(joint) at binding time from joint space to world space
-				gbpim = transformLinkMatrix.Inverse() * transformMatrix * geometryTransform;
-
-				float elemetns[16] = {
-					gbpim.Get(0, 0), gbpim.Get(0, 1), gbpim.Get(0, 2), gbpim.Get(0, 3),
-					gbpim.Get(1, 0), gbpim.Get(1, 1), gbpim.Get(1, 2), gbpim.Get(1, 3),
-					gbpim.Get(2, 0), gbpim.Get(2, 1), gbpim.Get(2, 2), gbpim.Get(2, 3),
-					gbpim.Get(3, 0), gbpim.Get(3, 1), gbpim.Get(3, 2), gbpim.Get(3, 3),
-				};
-				skeleton.joints[currJointIndex].inversed = glm::make_mat4(elemetns);
-
 
 				//Associate each joint with the control points it affects
 				unsigned int numOfIndices = currCluster->GetControlPointIndicesCount();
@@ -485,11 +470,25 @@ void Importer::ProcessSkeletonHierarchyRecursively(FbxNode* inNode, int inDepth,
 		currJoint.parent_index = inParentIndex;
 		currJoint.name = inNode->GetName();
 
-		FbxAMatrix global_mat = inNode->EvaluateGlobalTransform();
-		currJoint.coord = glm::vec3(global_mat.GetT().mData[0], global_mat.GetT().mData[1], global_mat.GetT().mData[2]);
-		float scale = global_mat.GetS().mData[0];
-		currJoint.inversed = glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(currJoint.coord)), glm::vec3(scale, scale, scale));
+		FbxAMatrix global_mat = inNode->EvaluateGlobalTransform().Inverse();
 		
+		float elemetns[16] = {
+			global_mat.Get(0, 0),global_mat.Get(0, 1), global_mat.Get(0, 2), global_mat.Get(0, 3),
+			global_mat.Get(1, 0),global_mat.Get(1, 1), global_mat.Get(1, 2), global_mat.Get(1, 3),
+			global_mat.Get(2, 0),global_mat.Get(2, 1), global_mat.Get(2, 2), global_mat.Get(2, 3),
+			global_mat.Get(3, 0),global_mat.Get(3, 1), global_mat.Get(3, 2), global_mat.Get(3, 3),
+		};
+		currJoint.inversed = glm::make_mat4(elemetns);
+
+		glm::mat4 transformation =glm::inverse(currJoint.inversed);
+		glm::vec3 scale;
+		glm::quat rotation;
+		glm::vec3 translation;
+		glm::vec3 skew;
+		glm::vec4 perspective;
+		glm::decompose(transformation, scale, rotation, translation, skew, perspective);
+		currJoint.coord = translation;
+
 		skeleton.joints.push_back(currJoint);
 	}
 	for (int i = 0; i < inNode->GetChildCount(); i++)
@@ -506,9 +505,7 @@ void Importer::ProcessAnimationSampleRecursively(FbxNode* inNode, int inDepth, i
 		currPose.parent_index = inParentIndex;
 
 		FbxAMatrix global_mat = inNode->EvaluateGlobalTransform(time);
-		currPose.trans = glm::vec4(global_mat.GetT().mData[0], global_mat.GetT().mData[1], global_mat.GetT().mData[2], 1.0);
-		currPose.rot   = glm::quat(glm::vec3(global_mat.GetT().mData[0], global_mat.GetT().mData[1], global_mat.GetT().mData[2]));
-		currPose.scale = global_mat.GetS().mData[0];
+
 		float elemetns[16] = {
 			global_mat.Get(0, 0), global_mat.Get(0, 1), global_mat.Get(0, 2), global_mat.Get(0, 3),
 			global_mat.Get(1, 0), global_mat.Get(1, 1), global_mat.Get(1, 2), global_mat.Get(1, 3),
@@ -516,6 +513,18 @@ void Importer::ProcessAnimationSampleRecursively(FbxNode* inNode, int inDepth, i
 			global_mat.Get(3, 0), global_mat.Get(3, 1), global_mat.Get(3, 2), global_mat.Get(3, 3),
 		};
 		currPose.global_inverse_matrix = glm::make_mat4(elemetns);
+
+		glm::mat4 transformation = currPose.global_inverse_matrix;
+		glm::vec3 scale;
+		glm::quat rotation;
+		glm::vec3 translation;
+		glm::vec3 skew;
+		glm::vec4 perspective;
+		glm::decompose(transformation, scale, rotation, translation, skew, perspective);
+		
+		currPose.trans = glm::vec4(translation, 1.0);
+		currPose.rot = rotation;
+		currPose.scale = scale.x;
 
 		sample.jointposes.push_back(currPose);
 	}

@@ -5,6 +5,8 @@
 #include <gtc/matrix_transform.hpp>
 #include <gtc/type_ptr.hpp>
 #include <glm/gtx/transform.hpp>
+#include <glm/gtx/quaternion.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 
 #include "Macro.h"
 #include "Shader.h"
@@ -49,10 +51,67 @@ void ConvertJointPoseBySkeleton(AnimationClip& clip, Skeleton skeleton)
 				finished = false;
 			}
 			else
-			{				
+			{
 				clip.samples[i].jointposes[j].global_inverse_matrix = clip.samples[i].jointposes[j].global_inverse_matrix * skeleton.joints[j].inversed;
 				finished = true;
 			}
+		}
+	}
+}
+
+void InterpolateMatrixInAFrame(AnimationClip clip, int frame, glm::mat4* matrixs)
+{
+	int clip_frame_count = clip.frame_count;
+	float frame_per_count = (float)60 / clip_frame_count;
+
+	int current_frame = 0;
+	while (frame_per_count * current_frame + frame_per_count < frame)
+	{
+		current_frame++;
+	}
+
+	if (current_frame >= clip_frame_count)
+	{
+		current_frame = 0;
+		frame = 0;
+	}
+
+	if (current_frame >= clip_frame_count - 1)
+	{
+		float t = (current_frame + 1) * frame_per_count - (float)frame;
+		t /= frame_per_count;
+
+		for (int i = 0; i < clip.samples[0].jointposes.size(); i++)
+		{
+			glm::vec4 pointA = clip.samples[current_frame].jointposes[i].trans;
+			glm::vec4 pointB = clip.samples[0].jointposes[i].trans;
+
+			glm::vec4 result_translation = t * pointA + (1 - t) * pointB;
+
+			glm::quat result_rotation = glm::normalize(glm::slerp(clip.samples[current_frame].jointposes[i].rot, clip.samples[0].jointposes[i].rot, t));
+
+			glm::mat4 RotationMatrix = glm::toMat4(result_rotation);
+			glm::mat4 answer = glm::translate(glm::mat4(1.0), glm::vec3(result_translation)) * RotationMatrix;
+			matrixs[i] = answer;
+		}
+	}
+	else
+	{
+		float t = (current_frame + 1) * frame_per_count - (float)frame;
+		t /= frame_per_count;
+
+		for (int i = 0; i < clip.samples[0].jointposes.size(); i++)
+		{
+			glm::vec4 pointA = clip.samples[current_frame].jointposes[i].trans;
+			glm::vec4 pointB = clip.samples[current_frame + 1].jointposes[i].trans;
+
+			glm::vec4 result_translation = t * pointA + (1 - t) * pointB;
+
+			glm::quat result_rotation = glm::normalize(glm::slerp(clip.samples[current_frame].jointposes[i].rot, clip.samples[current_frame + 1].jointposes[i].rot, t));
+
+			glm::mat4 RotationMatrix = glm::toMat4(result_rotation);
+			glm::mat4 answer =  glm::translate(glm::mat4(1.0), glm::vec3(result_translation)) * RotationMatrix;
+			matrixs[i] = answer;
 		}
 	}
 }
@@ -197,6 +256,8 @@ int main()
 	glm::vec3 obj_position = glm::vec3(0.0, -50.0f, -300.0f);
 
 	int animation_sample_count = 0;
+
+	glm::mat4 interpolated_matrix[256];
 	
 
 	//////////////////////////////////////////////////////////////
@@ -207,15 +268,11 @@ int main()
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		if (angle <= 360)
-		{
 			angle += 0.5f;
-		}
 		else
-		{
 			angle = 0;
-		}
 
-		if (animation_sample_count < 13)
+		if (animation_sample_count < 59)
 		{
 			animation_sample_count++;
 		}
@@ -250,11 +307,17 @@ int main()
 
 
 		// Calculate skeleton's matrix
+		InterpolateMatrixInAFrame(this_clip, animation_sample_count, interpolated_matrix);
 		if (!this_clip.samples.empty())
 		{
-			for (int i = 0; i < this_clip.samples[animation_sample_count].jointposes.size(); i++)
+			int fixed_frame = (int)(animation_sample_count / ((float)60 / animation_sample_count));
+			if (fixed_frame >= 14)
+				fixed_frame = 0;
+
+			for (int i = 0; i < this_clip.samples[0].jointposes.size(); i++)
 			{
-				animation_inversed_matrix.global_inversed_matrix[i] = this_clip.samples[animation_sample_count].jointposes[i].global_inverse_matrix;
+				//animation_inversed_matrix.global_inversed_matrix[i] = this_clip.samples[fixed_frame].jointposes[i].global_inverse_matrix * this_skeleton.joints[i].inversed;
+				animation_inversed_matrix.global_inversed_matrix[i] = interpolated_matrix[i] * this_skeleton.joints[i].inversed;
 			}
 			buffer2.Update(&animation_inversed_matrix);
 		}
@@ -264,8 +327,8 @@ int main()
 		proxy.Draw();
 
 		// draw skeleton animation 
-		skeletonanimationshader->BindShader();
-		skeleton_animation_proxy.DrawLine();
+		//skeletonanimationshader->BindShader();
+		//skeleton_animation_proxy.DrawLine();
 
 		// glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
 		// -------------------------------------------------------------------------------

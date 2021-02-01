@@ -48,5 +48,10 @@ void main()
 
 	}
 
+	// gl_Position = model_view_perspective_matrix * (weight.x * global_inversed_matrix[index.x] *  vec4(model_position, 1)
+	// 											 + weight.y * global_inversed_matrix[index.y] *  vec4(model_position, 1)
+	// 											 + weight.z * global_inversed_matrix[index.z] *  vec4(model_position, 1)
+	// 											 + weight.w * global_inversed_matrix[index.w] *  vec4(model_position, 1));
+
 	//gl_Position = model_view_perspective_matrix * vec4(model_position, 1);
 }
