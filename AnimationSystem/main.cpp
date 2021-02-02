@@ -16,6 +16,8 @@
 
 #define PI 3.14159265
 
+int FrameRate = 120;	
+
 GLFWwindow * glfwwindow;
 
 
@@ -62,7 +64,7 @@ void ConvertJointPoseBySkeleton(AnimationClip& clip, Skeleton skeleton)
 void InterpolateMatrixInAFrame(AnimationClip clip, int frame, glm::mat4* matrixs)
 {
 	int clip_frame_count = clip.frame_count;
-	float frame_per_count = (float)60 / clip_frame_count;
+	float frame_per_count = (float)(FrameRate) / clip_frame_count;
 
 	int current_frame = 0;
 	while (frame_per_count * current_frame + frame_per_count < frame)
@@ -88,7 +90,8 @@ void InterpolateMatrixInAFrame(AnimationClip clip, int frame, glm::mat4* matrixs
 
 			glm::vec4 result_translation = t * pointA + (1 - t) * pointB;
 
-			glm::quat result_rotation = glm::normalize(glm::slerp(clip.samples[current_frame].jointposes[i].rot, clip.samples[0].jointposes[i].rot, t));
+			//glm::quat result_rotation = glm::normalize(glm::slerp(clip.samples[current_frame].jointposes[i].rot, clip.samples[0].jointposes[i].rot, t));
+			glm::quat result_rotation = glm::normalize(t* clip.samples[current_frame].jointposes[i].rot + (1 - t) * clip.samples[0].jointposes[i].rot);
 
 			glm::mat4 RotationMatrix = glm::toMat4(result_rotation);
 			glm::mat4 answer = glm::translate(glm::mat4(1.0), glm::vec3(result_translation)) * RotationMatrix;
@@ -107,10 +110,11 @@ void InterpolateMatrixInAFrame(AnimationClip clip, int frame, glm::mat4* matrixs
 
 			glm::vec4 result_translation = t * pointA + (1 - t) * pointB;
 
-			glm::quat result_rotation = glm::normalize(glm::slerp(clip.samples[current_frame].jointposes[i].rot, clip.samples[current_frame + 1].jointposes[i].rot, t));
+			//glm::quat result_rotation = glm::slerp(clip.samples[current_frame].jointposes[i].rot, clip.samples[current_frame + 1].jointposes[i].rot, t);
+			glm::quat result_rotation =  glm::normalize(t* clip.samples[current_frame].jointposes[i].rot + (1 - t) * clip.samples[current_frame + 1].jointposes[i].rot);
 
 			glm::mat4 RotationMatrix = glm::toMat4(result_rotation);
-			glm::mat4 answer =  glm::translate(glm::mat4(1.0), glm::vec3(result_translation)) * RotationMatrix;
+			glm::mat4 answer = glm::translate(glm::mat4(1.0), glm::vec3(result_translation)) * RotationMatrix;
 			matrixs[i] = answer;
 		}
 	}
@@ -135,17 +139,17 @@ int main()
 	Importer fbx;
 
 	fbx.Init("../models/SK_PlayerCharacter.fbx");
+	//fbx.Init("../models/SK_Enemy_Bird.fbx");
 	//fbx.PrintData();
 	fbx.ImportSkeletonMeshData(this_skeleton);
-	//fbx.ImportSkinData(this_skeleton);
 	fbx.ImportMeshData(mesh, index, this_skeleton);
-	//fbx.ImportAnimationData(this_clip);
 	fbx.CleanUp();
 
 	fbx.Init("../models/Anim_PlayerCharacter_run.fbx");
 	//fbx.Init("../models/Anim_PlayerCharacter_falling.fbx");
+	//fbx.Init("../models/Anim_PlayerCharacter_swim.fbx");
+	//fbx.Init("../models/Anim_Enemy_Bird_attack_down.fbx");
 	//fbx.PrintData();
-	//fbx.ImportSkeletonMeshData(this_skeleton);
 	fbx.ImportAnimationData(this_clip);
 	fbx.CleanUp();
 
@@ -268,11 +272,11 @@ int main()
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		if (angle <= 360)
-			angle += 0.5f;
+			angle += 0.3f;
 		else
 			angle = 0;
 
-		if (animation_sample_count < 59)
+		if (animation_sample_count < FrameRate)
 		{
 			animation_sample_count++;
 		}
@@ -289,7 +293,7 @@ int main()
 		// calculate the model matrix for each object and pass it to shader before drawing
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, obj_position);
-		//model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
+		//model = glm::rotate(model, glm::radians(-60.0f), glm::vec3(0, 1.0, 0));
 		//model = glm::scale(model, glm::vec3(1.0f, 0.5f, 1.0f));
 
 		// Calculate MVP matrix and submit to constant buffer
@@ -310,7 +314,7 @@ int main()
 		InterpolateMatrixInAFrame(this_clip, animation_sample_count, interpolated_matrix);
 		if (!this_clip.samples.empty())
 		{
-			int fixed_frame = (int)(animation_sample_count / ((float)60 / animation_sample_count));
+			int fixed_frame = (int)(animation_sample_count / ((float)FrameRate / animation_sample_count));
 			if (fixed_frame >= 14)
 				fixed_frame = 0;
 

@@ -79,9 +79,8 @@ bool Importer::ImportMeshData(std::vector<MeshData>& mesh, std::vector<int>& ind
 	//Get mesh in the scene
 	int meshCount = Importer::lScene->GetSrcObjectCount<FbxMesh>();
 
-	//for (int i = 0; i < meshCount; ++i)
+	for (int i = 0; i < meshCount; ++i)
 	{
-		int i = 1;
 		FbxMesh* pMesh = Importer::lScene->GetSrcObject<FbxMesh>(i);
 
 		FbxNode* pNode = pMesh->GetNode();
